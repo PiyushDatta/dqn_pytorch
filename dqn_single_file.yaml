@@ -1,0 +1,21 @@
+model:
+    hidden_nodes_1: 256
+    hidden_nodes_2: 256
+
+optimizer:
+    max_grad_norm: 128
+    gamma: 0.99
+    tau: 0.005
+    lr: 0.0023
+    epsilon_max: 0.90
+    epsilon_min: 0.05
+    epsilon_decay: 1000
+
+training:
+    eps_num_update_target: 10
+    batch_size: 64
+    replay_mem_size: 100_000
+    episodes: 100_000
+    train: true
+    validate: false
+    plot: true
