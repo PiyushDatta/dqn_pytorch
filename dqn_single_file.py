@@ -1,11 +1,13 @@
-from collections import deque
-from collections import namedtuple
-
 import os
 import random
 import math
+import logging
+from enum import Enum
 from typing import List
-import numpy as np
+from tqdm import tqdm
+from collections import deque
+from collections import namedtuple
+from itertools import count
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -22,6 +24,7 @@ from omegaconf import DictConfig
 is_ipython = "inline" in matplotlib.get_backend()
 if is_ipython:
     from IPython import display
+matplotlib.use("TkAgg")
 plt.ion()
 
 # Named tuple for storing experience steps gathered in training
@@ -30,9 +33,15 @@ Experience = namedtuple(
     field_names=["state", "action", "reward", "next_state", "done"],
 )
 
-WEIGHTS_DIR_NAME = "weights"
 WEIGHTS_FILE_NAME = "weights.pt"
-WEIGHTS_FILE = f"{WEIGHTS_DIR_NAME}/{WEIGHTS_FILE_NAME}"
+
+
+class MetricsEnum(str, Enum):
+    DurationsMetric = "Duration"
+    RewardsMetric = "Rewards"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 class ReplayMemory(object):
@@ -62,10 +71,10 @@ class ReplayMemory(object):
         Args:
           batch_size: Number of experiences to retrieve
         """
-        indices = np.random.choice(len(self.memory), batch_size, replace=False)
-        return Experience(*zip(*(self.memory[idx] for idx in indices)))
+        x = random.sample(self.memory, batch_size)
+        return Experience(*zip(*(x)))
 
-    def __len__(self) -> None:
+    def __len__(self) -> int:
         return len(self.memory)
 
 
@@ -90,7 +99,7 @@ class DQNModel(nn.Module):
     def forward(self, state: torch.Tensor) -> torch.Tensor:
         """
         Called with either one element to determine next action, or a batch
-        during optimization. Returns tensor([[left0exp,right0exp]...]).
+        during optimization. 
         Args:
             state: The current state of the game.
         Returns:
@@ -104,51 +113,56 @@ class DQNModel(nn.Module):
 
 class DQNAgent:
     """
-    Deep Q-Network (DQN) agent that uses a neural network to approximate Q-values
-    and trains the network using experience replay and a target network.
+        Deep Q-Network (DQN) agent that uses a neural network to approximate Q-values
+        and trains the network using experience replay and a target network.
 
-    Args:
-      state_size (int): size of the state space
-      action_size (int): size of the action space
-      capacity (int): maximum size of the replay memory
-      weights_file (str): path to the file where the weights will be saved/loaded
-      lr (float): learning rate of the optimizer
-      gamma (float): discount factor used in the Bellman equation
-      epsilon_max (float): initial/max value of the exploration parameter
-      epsilon_min (float): final/min value of the exploration parameter
-      epsilon_decay (float): decay rate of the exploration parameter
-      tau (float): update rate of the target network
-      eps_num_update_target (int): update target network at every eps_num_update_target episode
-      max_grad_norm (float): maximum norm of the gradients used to clip the gradients
-      hidden_1_size (int): number of neuron nodes in first hidden layer
-      hidden_2_size (int): number of neuron nodes in second hidden layer
+        Args:
+          state_size (int): size of the state space
+          action_size (int): size of the action space
+          capacity (int): maximum size of the replay memory
+          weights_file (str): path to the file where the weights will be saved/loaded
+          lr (float): learning rate of the optimizer
+          gamma (float): discount factor used in the Bellman equation
+          epsilon_start (float): initial/max value of the exploration parameter
+          epsilon_min (float): final/min value of the exploration parameter
+          epsilon_decay (float): decay rate of the exploration parameter
+          tau (float): update rate of the target network
+          num_update_target (int): update target network at every num_update_target episode
+          num_save_weights (int): save target network weights at every num_save_weights episode
+          max_grad_norm (float): maximum norm of the gradients used to clip the gradients
+          hidden_1_size (int): number of neuron nodes in first hidden layer
+          hidden_2_size (int): number of neuron nodes in second hidden layer
 
-Methods:
-      take_action(env, state, eps_threshold) -> torch.Tensor:
-        Choose an action using the epsilon-greedy policy.
+    Methods:
+          take_action(env, state, eps_threshold) -> torch.Tensor:
+            Choose an action using the epsilon-greedy policy.
 
-      store_experience(state, action, reward, next_state, done) -> None:
-        Stores the experience (state, action, reward, next_state, done) in the
-        memory buffer.
+          store_experience(state, action, reward, next_state, done) -> None:
+            Stores the experience (state, action, reward, next_state, done) in the
+            memory buffer.
 
-      save_network_weights() -> None:
-        Saves the weights of the target network to the specified file.
+          save_network_weights() -> None:
+            Saves the weights of the target network to the specified file.
 
-      load_network_weights() -> None:
-        Loads the weights of the current and target networks from the specified file.
+          load_network_weights() -> None:
+            Loads the weights of the current and target networks from the specified file.
 
-      update_target_network() -> None:
-        Updates the weights of the target network by copying the weights of
-        the main network.
+          update_target_network() -> None:
+            Updates the weights of the target network by copying the weights of
+            the main network.
 
-      replay(batch_size: int) -> None:
-        Performs a replay of the experiences stored in the memory buffer.
+          optimize_model(batch_size: int) -> None:
+            Performs a replay of the experiences stored in the memory buffer and
+            optimizes the model based of this batch of experiences.
 
-      train(env, episodes, batch_size, is_ipython):
-        Trains the agent and network through all the episodes. We train the
-        network on a batch_size number of states, rather than train it on the
-        most recent one. Saves the weights and copies to the target network
-        after each episode.
+          train(self, env: gym.Env, episodes: int, batch_size: int, should_plot: bool, is_ipython: bool) -> None:
+            Trains the agent and network through all the episodes. We train the
+            network on a batch_size number of states, rather than train it on the
+            most recent one. Saves the weights and copies to the target network
+            after each episode.
+
+          validate(self, env: gym.Env, episodes: int, should_plot: bool, is_ipython: bool) -> int:
+            Validate the agent and network against the set episodes.
     """
 
     def __init__(
@@ -159,11 +173,12 @@ Methods:
         weights_file: str,
         lr: float = 0.001,
         gamma: float = 0.99,
-        epsilon_max: float = 1.0,
+        epsilon_start: float = 1.0,
         epsilon_min: float = 0.05,
         epsilon_decay: int = 1000,
         tau: float = 0.005,
-        eps_num_update_target: int = 1,
+        num_update_target: int = 1,
+        num_save_weights: int = 50,
         max_grad_norm: float = 100.0,
         hidden_1_size: int = 128,
         hidden_2_size: int = 128,
@@ -173,11 +188,12 @@ Methods:
         self.capacity = capacity
         self.lr = lr
         self.gamma = gamma
-        self.epsilon_max = epsilon_max
+        self.epsilon_start = epsilon_start
         self.epsilon_min = epsilon_min
         self.epsilon_decay = epsilon_decay
         self.tau = tau
-        self.eps_num_update_target = eps_num_update_target
+        self.num_update_target = num_update_target
+        self.num_save_weights = num_save_weights
         self.max_grad_norm = max_grad_norm
         self.device = torch.device(
             "cuda" if torch.cuda.is_available() else "cpu")
@@ -200,8 +216,15 @@ Methods:
         )
         self.loss_fn = nn.MSELoss()
         self.memory = ReplayMemory(self.capacity)
+        self.metric_log = {
+            MetricsEnum.DurationsMetric: [],
+            MetricsEnum.RewardsMetric: [],
+        }
+        self.steps_done = 0
 
-    def take_action(self, env: gym.Env, state: torch.Tensor, eps_threshold: float) -> torch.Tensor:
+    def take_action(
+        self, env: gym.Env, state: torch.Tensor, eps_threshold: float
+    ) -> torch.Tensor:
         """
         Choose an action using the epsilon-greedy policy.
 
@@ -221,7 +244,14 @@ Methods:
         # Choose a random action.
         return torch.tensor([[env.action_space.sample()]]).long().to(self.device)
 
-    def store_experience(self, state: torch.Tensor, action: torch.Tensor, reward: torch.Tensor, next_state: torch.Tensor, done: torch.Tensor):
+    def store_experience(
+        self,
+        state: torch.Tensor,
+        action: torch.Tensor,
+        reward: torch.Tensor,
+        next_state: torch.Tensor,
+        done: torch.Tensor,
+    ):
         """
         Stores the experience (state, action, reward, next_state, done) in the
         memory buffer.
@@ -233,29 +263,39 @@ Methods:
             next_state: The next state of the game.
             done: A flag indicating whether the episode is finished or not.
         """
-        self.memory.push(Experience(state=state, action=action,
-                         reward=reward, done=done, next_state=next_state))
+        self.memory.push(
+            Experience(
+                state=state,
+                action=action,
+                reward=reward,
+                done=done,
+                next_state=next_state,
+            )
+        )
 
     def save_network_weights(self) -> None:
         # Create a weights file if it doesn't exist.
         if not os.path.exists(self.weights_file):
-            print(
-                f"Weight file not found: {self.weights_file}. Creating it now.")
+            logging.info(
+                f"Weight file not found: {self.weights_file}. Creating it now."
+            )
             with open(self.weights_file, "w") as _:
                 pass
         torch.save(self.target_network.state_dict(), self.weights_file)
 
     def load_network_weights(self) -> None:
         try:
-            # Load the state_dict from the weights file
+            # Load the state_dict from the weights file.
             state_dict = torch.load(
                 self.weights_file, map_location=self.device)
 
-            # Map the state_dict keys to the current model's keys
+            # Map the state_dict keys to the current model's keys.
             new_state_dict = {}
-            if (state_dict.keys() == self.target_network.state_dict().keys()):
+            if state_dict.keys() == self.target_network.state_dict().keys():
                 new_state_dict = state_dict
             else:
+                # Transfer learning.
+                # If we ever need to load weights trained somewhere else.
                 linear_one_key = "q_net._fc.0"
                 linear_two_key = "q_net._fc.2"
                 linear_three_key = "q_net._fc.4"
@@ -274,9 +314,9 @@ Methods:
             strict = True
             self.network.load_state_dict(new_state_dict, strict=strict)
             self.target_network.load_state_dict(new_state_dict, strict=strict)
-            print(f"Loaded weights from {self.weights_file}")
+            logging.info(f"Loaded weights from {self.weights_file}")
         except FileNotFoundError:
-            print(
+            logging.info(
                 f"No weights file found at {self.weights_file}, not loading any weights."
             )
 
@@ -287,17 +327,15 @@ Methods:
 
         θ′ ← τ θ + (1 −τ )θ′
         """
-        network_sd = self.target_network.state_dict()
-        target_network_sd = self.target_network.state_dict()
-        for key in network_sd:
-            target_network_sd[key] = network_sd[key] * self.tau + target_network_sd[
+        target_network_state_dict = self.target_network.state_dict()
+        network_state_dict = self.network.state_dict()
+        for key in network_state_dict:
+            target_network_state_dict[key] = network_state_dict[
                 key
-            ] * (1 - self.tau)
-        self.target_network.load_state_dict(target_network_sd)
-        # Save the weights as well.
-        self.save_network_weights()
+            ] * self.tau + target_network_state_dict[key] * (1 - self.tau)
+        self.target_network.load_state_dict(target_network_state_dict)
 
-    def replay(self, batch_size: int) -> None:
+    def optimize_model(self, batch_size: int) -> None:
         """
         Performs a replay of the experiences stored in the memory buffer.
 
@@ -308,15 +346,6 @@ Methods:
             return
 
         batch: Experience = self.memory.sample(batch_size)
-        state_batch = torch.cat(batch.state).to(self.device)
-        action_batch = torch.cat(batch.action).to(self.device)
-        reward_batch = torch.cat(batch.reward).to(self.device)
-        next_state_batch = torch.cat([s for s in batch.next_state if s is not None]).to(
-            self.device
-        )
-
-        # Compute the Q-values for the current state-action pairs.
-        current_q_values = self.network(state_batch).gather(1, action_batch)
 
         # Compute a mask of non-final states and concatenate the batch elements
         # (a final state would've been the one after which simulation ended)
@@ -325,6 +354,15 @@ Methods:
             device=self.device,
             dtype=torch.bool,
         )
+        next_state_batch = torch.cat([s for s in batch.next_state if s is not None]).to(
+            self.device
+        )
+        state_batch = torch.cat(batch.state).to(self.device)
+        action_batch = torch.cat(batch.action).to(self.device)
+        reward_batch = torch.cat(batch.reward).to(self.device)
+
+        # Compute the Q-values for the current state-action pairs.
+        current_q_values = self.network(state_batch).gather(1, action_batch)
 
         # Compute the Q-values for the next state-actions pairs.
         next_state_values = torch.zeros(batch_size).to(self.device)
@@ -337,16 +375,29 @@ Methods:
         expected_q_values = reward_batch + (next_state_values * self.gamma)
 
         # Compute the loss between the predicted and expected Q-values.
-        loss = self.loss_fn(current_q_values, expected_q_values)
+        loss = self.loss_fn(current_q_values, expected_q_values.unsqueeze(1))
 
+        # Reset the gradients weights & biases before back propagation.
         self.optimizer.zero_grad()
+
+        # Calculate the gradients of the loss.
         loss.backward()
-        if self.max_grad_norm:
-            nn.utils.clip_grad_norm_(
-                self.network.parameters(), self.max_grad_norm)
+
+        # In-place gradient clipping.
+        nn.utils.clip_grad_value_(
+            self.network.parameters(), self.max_grad_norm)
+
+        # Update the network with the gradients.
         self.optimizer.step()
 
-    def train(self, env: gym.Env, episodes: int, batch_size: int, should_plot: bool, is_ipython: bool) -> None:
+    def train(
+        self,
+        env: gym.Env,
+        episodes: int,
+        batch_size: int,
+        should_plot: bool,
+        is_ipython: bool,
+    ) -> None:
         """
         Trains the agent and network through all the episodes. We train the
         network on a batch_size number of states, rather than train it on the
@@ -360,42 +411,45 @@ Methods:
           should_plot: Use matplotlib to plot the graph.
           is_ipython: True, if its IPython environment.
         """
-        steps_done = 0
-        highest_score = 0
-        scores = []
-        episode_durations = []
-        eps_threshold = self.epsilon_min
-        for episode in range(episodes):
-            done = False
-            score = 0
-            # the _ var is info
+        # Clear metric log before starting.
+        for key in self.metric_log:
+            self.metric_log[key] = []
+
+        highest_reward = 0
+        for episode in tqdm(range(episodes)):
+            total_reward = 0
+            # Initialize the environment and get it's state.
             state, _ = env.reset()
-            state = torch.from_numpy(
-                state).float().unsqueeze(0).to(self.device)
+            state = torch.tensor(
+                state, dtype=torch.float32, device=self.device
+            ).unsqueeze(0)
 
-            # Run through the entire episode
-            while not done:
+            # Keep interacting with the environment until done.
+            for t in count():
+                # Take an action.
                 eps_threshold = self.epsilon_min + (
-                    self.epsilon_max - self.epsilon_min
-                ) * math.exp(-1.0 * steps_done / self.epsilon_decay)
-                action = self.take_action(env, state, eps_threshold)
-                # the _ var is info
-                next_state, reward, done, truncated, _ = env.step(
-                    action.item())
-                reward = torch.tensor([reward]).to(self.device)
-                done = done or truncated
+                    self.epsilon_start - self.epsilon_min
+                ) * math.exp(-1.0 * self.steps_done / self.epsilon_decay)
+                self.steps_done += 1
+                action = self.take_action(
+                    env, state, eps_threshold=eps_threshold)
 
-                if done:
+                # Environment step.
+                observation, reward, terminated, truncated, _ = env.step(
+                    action.item())
+
+                total_reward += reward
+                reward = torch.tensor([reward], device=self.device)
+
+                done = terminated or truncated
+                if terminated:
                     next_state = None
                 else:
-                    next_state = (
-                        torch.from_numpy(next_state)
-                        .float()
-                        .unsqueeze(0)
-                        .to(self.device)
-                    )
+                    next_state = torch.tensor(
+                        observation, dtype=torch.float32, device=self.device
+                    ).unsqueeze(0)
 
-                done = torch.tensor([done]).to(self.device)
+                # Store the transition in memory.
                 self.store_experience(
                     state=state,
                     action=action,
@@ -403,88 +457,155 @@ Methods:
                     done=done,
                     next_state=next_state,
                 )
+
+                # Move to the next state.
                 state = next_state
-                score += reward.item()
-                # Train the agent on a batch of experiences.
-                self.replay(batch_size)
-                steps_done += 1
 
-            # Save and update the target network's weights based off
-            # the current network.
-            if (episode % self.eps_num_update_target == 0):
-                self.update_target_network()
+                # Perform one step of the optimization (on the network).
+                self.optimize_model(batch_size)
 
-            episode_durations.append(episode)
-            scores.append(score)
-            if should_plot:
-                plot_durations(scores=scores, is_ipython=is_ipython)
-            print(
-                f"Episode: {episode+1}, Score: {score}, Epsilon: {eps_threshold:.2f}")
-            if score > highest_score:
-                highest_score = score
-                print(
-                    "\nNew high score: {scre} at episode {eps}\n".format(
-                        scre=highest_score, eps=episode
+                # Update the target network's weights based off the current network.
+                if self.steps_done % self.num_update_target == 0:
+                    self.update_target_network()
+
+                # Save the target network's weights.
+                if self.steps_done % self.num_save_weights == 0:
+                    self.save_network_weights()
+
+                # Episode finished.
+                if done:
+                    self.metric_log[MetricsEnum.DurationsMetric].append(t + 1)
+                    self.metric_log[MetricsEnum.RewardsMetric].append(
+                        total_reward)
+                    logging.debug(
+                        f"Episode: {episode+1}, Score: {total_reward}, Epsilon: {eps_threshold:.2f}"
                     )
-                )
+                    if should_plot:
+                        plot_durations(
+                            scores=self.metric_log[MetricsEnum.DurationsMetric],
+                            is_ipython=is_ipython,
+                        )
+                    if total_reward > highest_reward:
+                        highest_reward = total_reward
+                        logging.info(
+                            "New high score: {scre} at episode {eps} with epsilon {epsilon}".format(
+                                scre=highest_reward, eps=episode, epsilon=eps_threshold
+                            )
+                        )
+                    break
 
         if should_plot:
             # plot graph
-            plot_durations(scores=scores, is_ipython=is_ipython,
-                           show_result=True)
+            plot_durations(
+                scores=self.metric_log[MetricsEnum.DurationsMetric],
+                is_ipython=is_ipython,
+                show_result=True,
+            )
         plt.ioff()
         plt.show()
 
-    def test_network(self, env: gym.Env, episodes: int) -> int:
-        scores = []
-        for episode in range(episodes):
+    def validate(
+        self, env: gym.Env, episodes: int, should_plot: bool, is_ipython: bool
+    ) -> int:
+        """
+        Validate the agent and network against the set episodes.
+
+        Args:
+          env: The game environment.
+          episodes: The number of episodes we play through.
+          should_plot: Use matplotlib to plot the graph.
+          is_ipython: True, if its IPython environment.
+        """
+
+        # Clear metric log before starting.
+        for key in self.metric_log:
+            self.metric_log[key] = []
+        highest_reward = 0
+        for episode in tqdm(range(episodes)):
+            total_reward = 0
+            # Initialize the environment and get it's state
             state, _ = env.reset()
-            state_tensor = torch.from_numpy(
-                state).float().unsqueeze(0).to(self.device)
-            done = False
-            score = 0
-            for t_test in range(210):
-                # Always use the network.
-                eps_threshold = -1
-                action = self.take_action(
-                    env, state_tensor, eps_threshold).item()
-                next_state, reward, done, truncated, info = env.step(action)
-                done = done or truncated
-                score += reward
+            state = torch.tensor(
+                state, dtype=torch.float32, device=self.device
+            ).unsqueeze(0)
+            for t in count():
+                # Always have the network take an action
+                action = self.take_action(env, state, eps_threshold=-1)
+
+                # Environment step
+                observation, reward, terminated, truncated, _ = env.step(
+                    action.item())
+
+                total_reward += reward
+                done = terminated or truncated
+                if terminated:
+                    next_state = None
+                else:
+                    next_state = torch.tensor(
+                        observation, dtype=torch.float32, device=self.device
+                    ).unsqueeze(0)
+
+                # Move to the next state
                 state = next_state
-                if done or t_test == 209:
-                    scores.append(score)
-                    print(
-                        "episode: {}/{}, score: {}, e: {}".format(
-                            episode, episodes, score, 0
-                        )
+
+                if done:
+                    self.metric_log[MetricsEnum.DurationsMetric].append(t + 1)
+                    self.metric_log[MetricsEnum.RewardsMetric].append(
+                        total_reward)
+                    logging.debug(
+                        f"Episode: {episode+1}, Score: {total_reward}"
                     )
+                    if should_plot:
+                        plot_durations(
+                            scores=self.metric_log[MetricsEnum.DurationsMetric],
+                            is_ipython=is_ipython,
+                        )
+                    if total_reward > highest_reward:
+                        highest_reward = total_reward
+                        logging.info(
+                            "New high score: {scre} at episode {eps}".format(
+                                scre=highest_reward, eps=episode
+                            )
+                        )
                     break
 
+        self.steps_done = 0
+        if should_plot:
+            # plot graph
+            plot_durations(
+                scores=self.metric_log[MetricsEnum.DurationsMetric],
+                is_ipython=is_ipython,
+                show_result=True,
+            )
+        plt.ioff()
+        plt.show()
 
-def plot_durations(scores: List[int], is_ipython: bool, show_result: bool = False) -> None:
+
+def plot_durations(
+    scores: List[int], is_ipython: bool, show_result: bool = False
+) -> None:
     plt.figure(1)
     scores_t = torch.tensor(scores, dtype=torch.float)
     if show_result:
         plt.title("Result")
     else:
         plt.clf()
-        plt.title("Training...")
+        plt.title("Running...")
 
     plt.xlabel("Episode")
-    plt.ylabel("Score/Duration")
+    plt.grid(True)
 
     # Plot score.
-    (score_plot,) = plt.plot(scores_t, label="Score")
+    (score_plot,) = plt.plot(scores_t.numpy(), label="Score", color="r")
+
+    # Show legends.
+    plt.legend(handles=[score_plot])
 
     # Take 100 episode averages and plot the avg score.
     if len(scores_t) >= 100:
         means = scores_t.unfold(0, 100, 1).mean(1).view(-1)
         means = torch.cat((torch.zeros(99), means))
         plt.plot(means.numpy(), label="Average score")
-
-    # Show legends
-    plt.legend(handles=[score_plot])
 
     # Pause a bit so that plots are updated.
     plt.pause(0.001)
@@ -500,6 +621,12 @@ def plot_durations(scores: List[int], is_ipython: bool, show_result: bool = Fals
 
 @hydra.main(version_base="1.2", config_path=".", config_name="dqn_single_file")
 def main(cfg: DictConfig):
+
+    # Setup logging.
+    logging.getLogger().setLevel(
+        level=logging.getLevelName(str(cfg.training.logging_level))
+    )
+
     # Game: CartPole-v1.
     env = gym.make("CartPole-v1")
 
@@ -511,17 +638,18 @@ def main(cfg: DictConfig):
 
     # Setup DQN Agent with ReplayMemory.
     agent = DQNAgent(
-        state_size,
-        action_size,
-        cfg.training.replay_mem_size,
-        weights_file=WEIGHTS_FILE,
+        state_size=state_size,
+        action_size=action_size,
+        capacity=cfg.training.replay_mem_size,
+        weights_file=WEIGHTS_FILE_NAME,
         lr=cfg.optimizer.lr,
         gamma=cfg.optimizer.gamma,
-        epsilon_max=cfg.optimizer.epsilon_max,
+        epsilon_start=cfg.optimizer.epsilon_start,
         epsilon_min=cfg.optimizer.epsilon_min,
         epsilon_decay=cfg.optimizer.epsilon_decay,
         tau=cfg.optimizer.tau,
-        eps_num_update_target=cfg.training.eps_num_update_target,
+        num_update_target=cfg.training.num_update_target,
+        num_save_weights=cfg.training.num_save_weights,
         max_grad_norm=cfg.optimizer.max_grad_norm,
         hidden_1_size=cfg.model.hidden_nodes_1,
         hidden_2_size=cfg.model.hidden_nodes_2,
@@ -529,22 +657,42 @@ def main(cfg: DictConfig):
 
     # Train.
     if cfg.training.train:
+        logging.info(
+            "Starting training for {eps} episodes.".format(
+                eps=cfg.training.training_episodes
+            )
+        )
         try:
             agent.train(
                 env=env,
-                episodes=cfg.training.episodes,
+                episodes=cfg.training.training_episodes,
                 batch_size=cfg.training.batch_size,
-                should_plot=cfg.training.plot,
+                should_plot=cfg.training.plot_training,
                 is_ipython=is_ipython,
             )
+            logging.info("Finished training!\n")
         except KeyboardInterrupt:
-            print("Got interrupted by user, stopping training.")
+            logging.error("Got interrupted by user, stopping training.")
 
     # Validate/Test.
     if cfg.training.validate:
-        agent.test_network(env=env, episodes=cfg.training.episodes)
+        logging.info(
+            "Starting validation for {eps} episodes.".format(
+                eps=cfg.training.validating_episodes
+            )
+        )
+        try:
+            agent.validate(
+                env=env,
+                episodes=cfg.training.validating_episodes,
+                should_plot=cfg.training.plot_validation,
+                is_ipython=is_ipython,
+            )
+            logging.info("Finished validating!\n")
+        except KeyboardInterrupt:
+            logging.error("Got interrupted by user, stopping validation.")
 
-    # Close our env, since we're done training.
+    # Close our env, since we're done training/validating.
     env.close()
 
 
