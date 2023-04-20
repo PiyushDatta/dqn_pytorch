@@ -2,11 +2,8 @@ import os
 import random
 import math
 import logging
-from enum import Enum
 from typing import List
 from tqdm import tqdm
-from collections import deque
-from collections import namedtuple
 from itertools import count
 
 import matplotlib
@@ -17,8 +14,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-import hydra
-from omegaconf import DictConfig
+from dqn_modular_code.util import Experience, MetricsEnum
+from dqn_modular_code.dqn_model import DQNModel
+from dqn_modular_code.replay_memory import ReplayMemory
 
 # Set up matplotlib and check if we're in an IPython environment.
 is_ipython = "inline" in matplotlib.get_backend()
@@ -26,89 +24,6 @@ if is_ipython:
     from IPython import display
 matplotlib.use("TkAgg")
 plt.ion()
-
-# Named tuple for storing experience steps gathered in training
-Experience = namedtuple(
-    "Experience",
-    field_names=["state", "action", "reward", "next_state", "done"],
-)
-
-WEIGHTS_FILE_NAME = "weights/weights.pt"
-
-
-class MetricsEnum(str, Enum):
-    DurationsMetric = "Duration"
-    RewardsMetric = "Rewards"
-
-    def __str__(self) -> str:
-        return self.value
-
-
-class ReplayMemory(object):
-    """
-    A cyclic buffer of bounded size that holds the experiences observed recently.
-
-    Methods:
-    push: Adds a new experience to the memory.
-    sample: Retrieves several random experiences from the memory.
-    """
-
-    def __init__(self, capacity: int) -> None:
-        self.memory = deque([], maxlen=capacity)
-
-    def push(self, experience: Experience) -> None:
-        """
-        Save an experience. The deque will automatically remove items when
-        full, so no need to check capacity.
-        Args:
-          experience: Experience. Tuple of arguments that should fit into an experience.
-        """
-        self.memory.append(experience)
-
-    def sample(self, batch_size: int) -> Experience:
-        """
-        Retrieve batch_size number of random experiences from the memory.
-        Args:
-          batch_size: Number of experiences to retrieve
-        """
-        x = random.sample(self.memory, batch_size)
-        return Experience(*zip(*(x)))
-
-    def __len__(self) -> int:
-        return len(self.memory)
-
-
-class DQNModel(nn.Module):
-    """
-    Deep Q-Network Model. Approximates a state-value function in a Q-Learning
-    framework with a neural network.
-    """
-
-    def __init__(
-        self,
-        state_size: int,
-        action_size: int,
-        hidden_1_size: int = 128,
-        hidden_2_size: int = 128,
-    ):
-        super(DQNModel, self).__init__()
-        self.fc1 = nn.Linear(state_size, hidden_1_size)
-        self.fc2 = nn.Linear(hidden_1_size, hidden_2_size)
-        self.fc3 = nn.Linear(hidden_2_size, action_size)
-
-    def forward(self, state: torch.Tensor) -> torch.Tensor:
-        """
-        Called with either one element to determine next action, or a batch
-        during optimization. 
-        Args:
-            state: The current state of the game.
-        Returns:
-            A tensor representing the chosen action.
-        """
-        action = torch.relu(self.fc1(state))
-        action = torch.relu(self.fc2(action))
-        action = self.fc3(action)
-        return action
 
 
 class DQNAgent:
@@ -319,6 +234,7 @@ class DQNAgent:
             logging.info(
                 f"No weights file found at {self.weights_file}, not loading any weights."
             )
+            exit(1)
 
     def update_target_network(self) -> None:
         """
@@ -617,84 +533,3 @@ def plot_durations(
             display.clear_output(wait=True)
         else:
             display.display(plt.gcf())
-
-
-@hydra.main(version_base="1.2", config_path="configs", config_name="dqn")
-def main(cfg: DictConfig):
-
-    # Setup logging.
-    logging.getLogger().setLevel(
-        level=logging.getLevelName(str(cfg.training.logging_level))
-    )
-
-    # Game: CartPole-v1.
-    env = gym.make("CartPole-v1")
-
-    # Get number of actions from gym action space.
-    action_size = env.action_space.n
-
-    # Get the number of state observations.
-    state_size = env.observation_space.shape[0]
-
-    # Setup DQN Agent with ReplayMemory.
-    agent = DQNAgent(
-        state_size=state_size,
-        action_size=action_size,
-        capacity=cfg.training.replay_mem_size,
-        weights_file=WEIGHTS_FILE_NAME,
-        lr=cfg.optimizer.lr,
-        gamma=cfg.optimizer.gamma,
-        epsilon_start=cfg.optimizer.epsilon_start,
-        epsilon_min=cfg.optimizer.epsilon_min,
-        epsilon_decay=cfg.optimizer.epsilon_decay,
-        tau=cfg.optimizer.tau,
-        num_update_target=cfg.training.num_update_target,
-        num_save_weights=cfg.training.num_save_weights,
-        max_grad_norm=cfg.optimizer.max_grad_norm,
-        hidden_1_size=cfg.model.hidden_nodes_1,
-        hidden_2_size=cfg.model.hidden_nodes_2,
-    )
-
-    # Train.
-    if cfg.training.train:
-        logging.info(
-            "Starting training for {eps} episodes.".format(
-                eps=cfg.training.training_episodes
-            )
-        )
-        try:
-            agent.train(
-                env=env,
-                episodes=cfg.training.training_episodes,
-                batch_size=cfg.training.batch_size,
-                should_plot=cfg.training.plot_training,
-                is_ipython=is_ipython,
-            )
-            logging.info("Finished training!\n")
-        except KeyboardInterrupt:
-            logging.error("Got interrupted by user, stopping training.")
-
-    # Validate/Test.
-    if cfg.training.validate:
-        logging.info(
-            "Starting validation for {eps} episodes.".format(
-                eps=cfg.training.validating_episodes
-            )
-        )
-        try:
-            agent.validate(
-                env=env,
-                episodes=cfg.training.validating_episodes,
-                should_plot=cfg.training.plot_validation,
-                is_ipython=is_ipython,
-            )
-            logging.info("Finished validating!\n")
-        except KeyboardInterrupt:
-            logging.error("Got interrupted by user, stopping validation.")
-
-    # Close our env, since we're done training/validating.
-    env.close()
-
-
-if __name__ == "__main__":
-    main()
