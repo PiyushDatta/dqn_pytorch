@@ -25,3 +25,7 @@ dqn_single_file.yaml
 ## Validation results with DQN April 19, 2023 with config #1
 
 ![image](assets/dqn_validation_april_19_2023_config_1.png)
+
+## License
+
+MIT License. Do whatever with the code, I am not liable for this code or its uses.
