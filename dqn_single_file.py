@@ -612,7 +612,7 @@ def generate_env(env_name: str) -> gym.Env:
         raise ValueError("Unsupported environment: {env}".format(env=env_name))
 
 
-@hydra.main(version_base="1.2", config_path="configs", config_name="dqn_cartpolev1")
+@hydra.main(version_base="1.2", config_path="configs", config_name="current")
 def main(cfg: DictConfig):
     # Setup logging.
     logging.getLogger().setLevel(level=logging.getLevelName(str(cfg.env.logging_level)))

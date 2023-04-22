@@ -3,6 +3,7 @@ neural_net:
     hidden_nodes_2: 256
 
 agent:
+    agent_type: "DQN_AGENT"
     max_grad_norm: 100
     gamma: 0.99
     tau: 0.005

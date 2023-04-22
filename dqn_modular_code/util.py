@@ -1,6 +1,7 @@
 from enum import Enum
 from collections import namedtuple
 
+import gymnasium as gym
 
 # Named tuple for storing experience steps gathered in training
 Experience = namedtuple(
@@ -18,7 +19,8 @@ class MetricsEnum(str, Enum):
 
 
 class AgentsEnum(str, Enum):
-    DQNAgent = "DQNAgent"
+    DQN_AGENT = "DQN_AGENT"
+    DUELING_DQN_AGENT = "DUELING_DQN_AGENT"
 
     def __str__(self) -> str:
         return self.value
@@ -54,3 +56,23 @@ class AgentConfig:
         self.num_save_weights: int = num_save_weights
         self.batch_size: int = batch_size
         self.replay_mem_size: int = replay_mem_size
+
+
+def generate_env(env_name: str) -> gym.Env:
+    """
+    Generates the specified environment.
+    """
+    if env_name == "CartPole-v1":
+        return gym.make("CartPole-v1")
+    else:
+        raise ValueError("Unsupported environment: {env}".format(env=env_name))
+
+
+def generate_agent_type(agent_type: str) -> AgentsEnum:
+    """
+    Generates the specified Agent.
+    """
+    try:
+        return AgentsEnum[agent_type.upper()]
+    except KeyError:
+        raise ValueError("Unsupported Agent: {agent}.".format(agent=agent_type))

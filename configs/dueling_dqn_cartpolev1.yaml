@@ -3,7 +3,7 @@ neural_net:
     hidden_nodes_2: 256
 
 agent:
-    agent_type: "DQN_AGENT"
+    agent_type: "DUELING_DQN_AGENT"
     max_grad_norm: 100
     gamma: 0.99
     tau: 0.005
@@ -12,7 +12,7 @@ agent:
     epsilon_min: 0.05
     epsilon_decay: 1000
     replay_mem_size: 10_000
-    weights_file: "weights/dqn_cartpolev1.pt"
+    weights_file: "weights/dueling_dqn_cartpolev1.pt"
 
 env:
     env_name: "CartPole-v1"

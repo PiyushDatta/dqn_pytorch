@@ -17,18 +17,18 @@ OR to run modular code
 
 ## Config
 
-configs/dqn_cartpolev1.yaml
+configs/current.yaml
 
 ## Weights
 
-weights/dqn_cartpolev1.pt
+weights/current.pt
 
 ## To copy pre-trained weights
 
 1. Copy config from solved config to current config
-    - example: cp configs/dqn_cartpolev1_solved_cfg_april_19_2023_config_1.yaml dqn_cartpolev1.yaml
+    - example: cp configs/dqn_cartpolev1_solved_cfg_april_19_2023_config_1.yaml current.yaml
 2. Copy weights from solved weights to current weights
-    - example: cp weights/dqn_cartpolev1_solved_cfg_april_19_2023_config_1.pt dqn_cartpolev1.pt
+    - example: cp weights/dqn_cartpolev1_solved_cfg_april_19_2023_config_1.pt current.pt
 3. Run the python script. `python dqn_single_file.py` or `python dqn_modular_code.py`.
 
 ## Training results for Cartpole V1 with DQN on April 19, 2023 with config dqn_cartpolev1_solved_cfg_april_19_2023_config_1

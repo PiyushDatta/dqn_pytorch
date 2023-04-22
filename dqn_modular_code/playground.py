@@ -12,6 +12,7 @@ import torch
 from dqn_modular_code.agent import Agent
 from dqn_modular_code.util import AgentConfig, AgentsEnum, MetricsEnum
 from dqn_modular_code.dqn.dqn_agent import DQNAgent
+from dqn_modular_code.dueling_dqn.dueling_dqn_agent import DuelingDQNAgent
 
 # Set up matplotlib and check if we're in an IPython environment.
 is_ipython = "inline" in matplotlib.get_backend()
@@ -112,8 +113,16 @@ class Playground:
         """
         Returns an deep learning agent.
         """
-        if agent_type == AgentsEnum.DQNAgent:
+        if agent_type == AgentsEnum.DQN_AGENT:
             return DQNAgent(
+                device=self.device,
+                state_size=state_size,
+                action_size=action_size,
+                weights_file=weights_file,
+                config=config,
+            )
+        elif agent_type == AgentsEnum.DUELING_DQN_AGENT:
+            return DuelingDQNAgent(
                 device=self.device,
                 state_size=state_size,
                 action_size=action_size,

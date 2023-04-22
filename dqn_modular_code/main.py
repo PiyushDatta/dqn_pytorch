@@ -6,7 +6,12 @@ import hydra
 from omegaconf import DictConfig
 
 from dqn_modular_code.playground import Playground
-from dqn_modular_code.util import AgentConfig, AgentsEnum
+from dqn_modular_code.util import (
+    AgentConfig,
+    AgentsEnum,
+    generate_agent_type,
+    generate_env,
+)
 
 
 def get_config_str(cfg: dict) -> str:
@@ -44,17 +49,7 @@ def log_config_info(
     )
 
 
-def generate_env(env_name: str) -> gym.Env:
-    """
-    Generates the specified environment
-    """
-    if env_name == "CartPole-v1":
-        return gym.make("CartPole-v1")
-    else:
-        raise ValueError("Unsupported environment: {env}".format(env=env_name))
-
-
-@hydra.main(version_base="1.2", config_path="../configs", config_name="dqn_cartpolev1")
+@hydra.main(version_base="1.2", config_path="../configs", config_name="current")
 def main(cfg: DictConfig):
     # Setup logging.
     logging.getLogger().setLevel(level=logging.getLevelName(str(cfg.env.logging_level)))
@@ -82,7 +77,7 @@ def main(cfg: DictConfig):
     # Setup a Playground with an Agent.
     playground = Playground(
         gym_env=env,
-        agent_type=AgentsEnum.DQNAgent,
+        agent_type=generate_agent_type(cfg.agent.agent_type),
         weights_file=cfg.agent.weights_file,
         config=agent_config,
     )
