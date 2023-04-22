@@ -481,7 +481,7 @@ class DQNAgent:
                         f"Episode: {episode+1}, Score: {total_reward}, Epsilon: {eps_threshold:.2f}"
                     )
                     if should_plot:
-                        plot_durations(
+                        plot_graph(
                             scores=self.metric_log[MetricsEnum.DurationsMetric],
                             is_ipython=is_ipython,
                         )
@@ -496,7 +496,7 @@ class DQNAgent:
 
         if should_plot:
             # plot graph
-            plot_durations(
+            plot_graph(
                 scores=self.metric_log[MetricsEnum.DurationsMetric],
                 is_ipython=is_ipython,
                 show_result=True,
@@ -556,7 +556,7 @@ class DQNAgent:
                         f"Episode: {episode+1}, Score: {total_reward}"
                     )
                     if should_plot:
-                        plot_durations(
+                        plot_graph(
                             scores=self.metric_log[MetricsEnum.DurationsMetric],
                             is_ipython=is_ipython,
                         )
@@ -572,7 +572,7 @@ class DQNAgent:
         self.steps_done = 0
         if should_plot:
             # plot graph
-            plot_durations(
+            plot_graph(
                 scores=self.metric_log[MetricsEnum.DurationsMetric],
                 is_ipython=is_ipython,
                 show_result=True,
@@ -581,7 +581,7 @@ class DQNAgent:
         plt.show()
 
 
-def plot_durations(
+def plot_graph(
     scores: List[int], is_ipython: bool, show_result: bool = False
 ) -> None:
     plt.figure(1)

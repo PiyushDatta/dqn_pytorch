@@ -1,28 +1,54 @@
 import logging
 
-import matplotlib
-import matplotlib.pyplot as plt
-
 import gymnasium as gym
 
 import hydra
 from omegaconf import DictConfig
 
-from dqn_modular_code.dqn_agent import DQNAgent
+from dqn_modular_code.playground import Playground
+from dqn_modular_code.util import AgentConfig, AgentsEnum
 
 
-# Set up matplotlib and check if we're in an IPython environment.
-is_ipython = "inline" in matplotlib.get_backend()
-if is_ipython:
-    from IPython import display
-matplotlib.use("TkAgg")
-plt.ion()
+def get_config_str(cfg: dict) -> str:
+    """
+    Get the configurations/hyperparameters
+    into a nice string format.
+    """
+    final_str = ""
+    if isinstance(cfg, dict):
+        for k, v in cfg.items():
+            final_str += "{k}: {v}\n".format(k=k, v=v)
 
-WEIGHTS_FILE_NAME = "weights/weights.pt"
+    return final_str
+
+
+def log_config_info(
+    playground: Playground,
+    agent_config: AgentConfig,
+    log_name: str = "training",
+    num_eps: int = 0,
+) -> None:
+    """
+    Before training or validating, pretty print the
+    configurations/hyperparameters.
+    """
+    logging.info(
+        "Starting {log_nme} for {eps} episodes.\n\n"
+        "Running the playground with:\n{pl_config}\n\n"
+        "With below config:\n{config}\n\n".format(
+            log_nme=log_name,
+            eps=num_eps,
+            pl_config=get_config_str(vars(playground)),
+            config=get_config_str(vars(agent_config)),
+        )
+    )
 
 
 @hydra.main(version_base="1.2", config_path="../configs", config_name="dqn")
 def main(cfg: DictConfig):
+    # Weights file.
+    WEIGHTS_FILE_NAME = "weights/weights.pt"
+
     # Setup logging.
     logging.getLogger().setLevel(
         level=logging.getLevelName(str(cfg.training.logging_level))
@@ -31,67 +57,70 @@ def main(cfg: DictConfig):
     # Game: CartPole-v1.
     env = gym.make("CartPole-v1")
 
-    # Get number of actions from gym action space.
-    action_size = env.action_space.n
-
-    # Get the number of state observations.
-    state_size = env.observation_space.shape[0]
-
-    # Setup DQN Agent with ReplayMemory.
-    agent = DQNAgent(
-        state_size=state_size,
-        action_size=action_size,
-        capacity=cfg.training.replay_mem_size,
-        weights_file=WEIGHTS_FILE_NAME,
-        lr=cfg.optimizer.lr,
+    # Setup AgentConfig.
+    agent_config = AgentConfig(
+        hidden_1_size=cfg.model.hidden_nodes_1,
+        hidden_2_size=cfg.model.hidden_nodes_2,
+        max_grad_norm=cfg.optimizer.max_grad_norm,
         gamma=cfg.optimizer.gamma,
+        tau=cfg.optimizer.tau,
+        lr=cfg.optimizer.lr,
         epsilon_start=cfg.optimizer.epsilon_start,
         epsilon_min=cfg.optimizer.epsilon_min,
         epsilon_decay=cfg.optimizer.epsilon_decay,
-        tau=cfg.optimizer.tau,
         num_update_target=cfg.training.num_update_target,
         num_save_weights=cfg.training.num_save_weights,
-        max_grad_norm=cfg.optimizer.max_grad_norm,
-        hidden_1_size=cfg.model.hidden_nodes_1,
-        hidden_2_size=cfg.model.hidden_nodes_2,
+        batch_size=cfg.training.batch_size,
+        replay_mem_size=cfg.training.replay_mem_size,
+    )
+
+    # Setup a Playground with an Agent.
+    playground = Playground(
+        gym_env=env,
+        agent_type=AgentsEnum.DQNAgent,
+        weights_file=WEIGHTS_FILE_NAME,
+        config=agent_config,
     )
 
     # Train.
     if cfg.training.train:
-        logging.info(
-            "Starting training for {eps} episodes.".format(
-                eps=cfg.training.training_episodes
-            )
+        # Clear metrics.
+        playground.clear_metrics()
+        # Pretty print config.
+        log_config_info(
+            playground=playground,
+            agent_config=agent_config,
+            log_name="training",
+            num_eps=cfg.training.training_episodes,
         )
         try:
-            agent.train(
-                env=env,
+            playground.train(
                 episodes=cfg.training.training_episodes,
-                batch_size=cfg.training.batch_size,
                 should_plot=cfg.training.plot_training,
-                is_ipython=is_ipython,
             )
             logging.info("Finished training!\n")
         except KeyboardInterrupt:
-            logging.error("Got interrupted by user, stopping training.")
+            logging.error("Got interrupted by user, stopping training.\n")
 
     # Validate/Test.
     if cfg.training.validate:
-        logging.info(
-            "Starting validation for {eps} episodes.".format(
-                eps=cfg.training.validating_episodes
-            )
+        # Clear metrics.
+        playground.clear_metrics()
+        # Pretty print config.
+        log_config_info(
+            playground=playground,
+            agent_config=agent_config,
+            log_name="validation",
+            num_eps=cfg.training.validating_episodes,
         )
         try:
-            agent.validate(
-                env=env,
+            playground.validate(
                 episodes=cfg.training.validating_episodes,
-                should_plot=cfg.training.plot_validation,
-                is_ipython=is_ipython,
+                should_plot=cfg.training.plot_training,
             )
             logging.info("Finished validating!\n")
         except KeyboardInterrupt:
-            logging.error("Got interrupted by user, stopping validation.")
+            logging.error("Got interrupted by user, stopping validation.\n")
 
     # Close our env, since we're done training/validating.
     env.close()
