@@ -1,8 +1,8 @@
-model:
+neural_net:
     hidden_nodes_1: 256
     hidden_nodes_2: 256
 
-optimizer:
+agent:
     max_grad_norm: 100
     gamma: 0.99
     tau: 0.005
@@ -10,12 +10,13 @@ optimizer:
     epsilon_start: 0.9
     epsilon_min: 0.05
     epsilon_decay: 1000
+    replay_mem_size: 10_000
 
-training:
+env:
+    env_name: "CartPole-v1"
     num_update_target: 1
     num_save_weights: 50
     batch_size: 128
-    replay_mem_size: 10_000
     train: false
     plot_training: true
     training_episodes: 1000

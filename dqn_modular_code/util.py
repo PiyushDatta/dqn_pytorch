@@ -36,10 +36,10 @@ class AgentConfig:
         epsilon_start: float = 1.0,
         epsilon_min: float = 0.05,
         epsilon_decay: int = 1000,
+        replay_mem_size: int = 10_000,
         num_update_target: int = 1,
         num_save_weights: int = 50,
         batch_size: int = 128,
-        replay_mem_size: int = 10_000,
     ):
         self.hidden_nodes_1: int = hidden_1_size
         self.hidden_nodes_2: int = hidden_2_size

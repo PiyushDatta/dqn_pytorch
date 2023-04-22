@@ -99,7 +99,7 @@ class DQNModel(nn.Module):
     def forward(self, state: torch.Tensor) -> torch.Tensor:
         """
         Called with either one element to determine next action, or a batch
-        during optimization. 
+        during optimization.
         Args:
             state: The current state of the game.
         Returns:
@@ -195,8 +195,7 @@ class DQNAgent:
         self.num_update_target = num_update_target
         self.num_save_weights = num_save_weights
         self.max_grad_norm = max_grad_norm
-        self.device = torch.device(
-            "cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.network = DQNModel(
             state_size,
             action_size,
@@ -286,8 +285,7 @@ class DQNAgent:
     def load_network_weights(self) -> None:
         try:
             # Load the state_dict from the weights file.
-            state_dict = torch.load(
-                self.weights_file, map_location=self.device)
+            state_dict = torch.load(self.weights_file, map_location=self.device)
 
             # Map the state_dict keys to the current model's keys.
             new_state_dict = {}
@@ -301,14 +299,11 @@ class DQNAgent:
                 linear_three_key = "q_net._fc.4"
                 for key, value in state_dict.items():
                     if linear_one_key in key:
-                        new_state_dict[key.replace(
-                            linear_one_key, "fc1")] = value
+                        new_state_dict[key.replace(linear_one_key, "fc1")] = value
                     elif linear_two_key in key:
-                        new_state_dict[key.replace(
-                            linear_two_key, "fc2")] = value
+                        new_state_dict[key.replace(linear_two_key, "fc2")] = value
                     elif linear_three_key in key:
-                        new_state_dict[key.replace(
-                            linear_three_key, "fc3")] = value
+                        new_state_dict[key.replace(linear_three_key, "fc3")] = value
 
             # Load the mapped state_dict into the models
             strict = True
@@ -384,8 +379,7 @@ class DQNAgent:
         loss.backward()
 
         # In-place gradient clipping.
-        nn.utils.clip_grad_value_(
-            self.network.parameters(), self.max_grad_norm)
+        nn.utils.clip_grad_value_(self.network.parameters(), self.max_grad_norm)
 
         # Update the network with the gradients.
         self.optimizer.step()
@@ -431,12 +425,10 @@ class DQNAgent:
                     self.epsilon_start - self.epsilon_min
                 ) * math.exp(-1.0 * self.steps_done / self.epsilon_decay)
                 self.steps_done += 1
-                action = self.take_action(
-                    env, state, eps_threshold=eps_threshold)
+                action = self.take_action(env, state, eps_threshold=eps_threshold)
 
                 # Environment step.
-                observation, reward, terminated, truncated, _ = env.step(
-                    action.item())
+                observation, reward, terminated, truncated, _ = env.step(action.item())
 
                 total_reward += reward
                 reward = torch.tensor([reward], device=self.device)
@@ -475,8 +467,7 @@ class DQNAgent:
                 # Episode finished.
                 if done:
                     self.metric_log[MetricsEnum.DurationsMetric].append(t + 1)
-                    self.metric_log[MetricsEnum.RewardsMetric].append(
-                        total_reward)
+                    self.metric_log[MetricsEnum.RewardsMetric].append(total_reward)
                     logging.debug(
                         f"Episode: {episode+1}, Score: {total_reward}, Epsilon: {eps_threshold:.2f}"
                     )
@@ -533,8 +524,7 @@ class DQNAgent:
                 action = self.take_action(env, state, eps_threshold=-1)
 
                 # Environment step
-                observation, reward, terminated, truncated, _ = env.step(
-                    action.item())
+                observation, reward, terminated, truncated, _ = env.step(action.item())
 
                 total_reward += reward
                 done = terminated or truncated
@@ -550,11 +540,8 @@ class DQNAgent:
 
                 if done:
                     self.metric_log[MetricsEnum.DurationsMetric].append(t + 1)
-                    self.metric_log[MetricsEnum.RewardsMetric].append(
-                        total_reward)
-                    logging.debug(
-                        f"Episode: {episode+1}, Score: {total_reward}"
-                    )
+                    self.metric_log[MetricsEnum.RewardsMetric].append(total_reward)
+                    logging.debug(f"Episode: {episode+1}, Score: {total_reward}")
                     if should_plot:
                         plot_graph(
                             scores=self.metric_log[MetricsEnum.DurationsMetric],
@@ -581,9 +568,7 @@ class DQNAgent:
         plt.show()
 
 
-def plot_graph(
-    scores: List[int], is_ipython: bool, show_result: bool = False
-) -> None:
+def plot_graph(scores: List[int], is_ipython: bool, show_result: bool = False) -> None:
     plt.figure(1)
     scores_t = torch.tensor(scores, dtype=torch.float)
     if show_result:
@@ -619,16 +604,23 @@ def plot_graph(
             display.display(plt.gcf())
 
 
+def generate_env(env_name: str) -> gym.Env:
+    """
+    Generates the specified environment
+    """
+    if env_name == "CartPole-v1":
+        return gym.make("CartPole-v1")
+    else:
+        raise ValueError("Unsupported environment: {env}".format(env=env_name))
+
+
 @hydra.main(version_base="1.2", config_path="configs", config_name="dqn")
 def main(cfg: DictConfig):
-
     # Setup logging.
-    logging.getLogger().setLevel(
-        level=logging.getLevelName(str(cfg.training.logging_level))
-    )
+    logging.getLogger().setLevel(level=logging.getLevelName(str(cfg.env.logging_level)))
 
-    # Game: CartPole-v1.
-    env = gym.make("CartPole-v1")
+    # Game: Gym Environment.
+    env = generate_env(str(cfg.env.env_name))
 
     # Get number of actions from gym action space.
     action_size = env.action_space.n
@@ -640,34 +632,34 @@ def main(cfg: DictConfig):
     agent = DQNAgent(
         state_size=state_size,
         action_size=action_size,
-        capacity=cfg.training.replay_mem_size,
+        capacity=cfg.agent.replay_mem_size,
         weights_file=WEIGHTS_FILE_NAME,
-        lr=cfg.optimizer.lr,
-        gamma=cfg.optimizer.gamma,
-        epsilon_start=cfg.optimizer.epsilon_start,
-        epsilon_min=cfg.optimizer.epsilon_min,
-        epsilon_decay=cfg.optimizer.epsilon_decay,
-        tau=cfg.optimizer.tau,
-        num_update_target=cfg.training.num_update_target,
-        num_save_weights=cfg.training.num_save_weights,
-        max_grad_norm=cfg.optimizer.max_grad_norm,
-        hidden_1_size=cfg.model.hidden_nodes_1,
-        hidden_2_size=cfg.model.hidden_nodes_2,
+        lr=cfg.agent.lr,
+        gamma=cfg.agent.gamma,
+        epsilon_start=cfg.agent.epsilon_start,
+        epsilon_min=cfg.agent.epsilon_min,
+        epsilon_decay=cfg.agent.epsilon_decay,
+        tau=cfg.agent.tau,
+        num_update_target=cfg.env.num_update_target,
+        num_save_weights=cfg.env.num_save_weights,
+        max_grad_norm=cfg.agent.max_grad_norm,
+        hidden_1_size=cfg.neural_net.hidden_nodes_1,
+        hidden_2_size=cfg.neural_net.hidden_nodes_2,
     )
 
     # Train.
-    if cfg.training.train:
+    if cfg.env.train:
         logging.info(
             "Starting training for {eps} episodes.".format(
-                eps=cfg.training.training_episodes
+                eps=cfg.env.training_episodes
             )
         )
         try:
             agent.train(
                 env=env,
-                episodes=cfg.training.training_episodes,
-                batch_size=cfg.training.batch_size,
-                should_plot=cfg.training.plot_training,
+                episodes=cfg.env.training_episodes,
+                batch_size=cfg.env.batch_size,
+                should_plot=cfg.env.plot_training,
                 is_ipython=is_ipython,
             )
             logging.info("Finished training!\n")
@@ -675,17 +667,17 @@ def main(cfg: DictConfig):
             logging.error("Got interrupted by user, stopping training.")
 
     # Validate/Test.
-    if cfg.training.validate:
+    if cfg.env.validate:
         logging.info(
             "Starting validation for {eps} episodes.".format(
-                eps=cfg.training.validating_episodes
+                eps=cfg.env.validating_episodes
             )
         )
         try:
             agent.validate(
                 env=env,
-                episodes=cfg.training.validating_episodes,
-                should_plot=cfg.training.plot_validation,
+                episodes=cfg.env.validating_episodes,
+                should_plot=cfg.env.plot_validation,
                 is_ipython=is_ipython,
             )
             logging.info("Finished validating!\n")
