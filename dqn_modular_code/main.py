@@ -54,11 +54,8 @@ def generate_env(env_name: str) -> gym.Env:
         raise ValueError("Unsupported environment: {env}".format(env=env_name))
 
 
-@hydra.main(version_base="1.2", config_path="../configs", config_name="dqn")
+@hydra.main(version_base="1.2", config_path="../configs", config_name="dqn_cartpolev1")
 def main(cfg: DictConfig):
-    # Weights file.
-    WEIGHTS_FILE_NAME = "weights/weights.pt"
-
     # Setup logging.
     logging.getLogger().setLevel(level=logging.getLevelName(str(cfg.env.logging_level)))
 
@@ -86,7 +83,7 @@ def main(cfg: DictConfig):
     playground = Playground(
         gym_env=env,
         agent_type=AgentsEnum.DQNAgent,
-        weights_file=WEIGHTS_FILE_NAME,
+        weights_file=cfg.agent.weights_file,
         config=agent_config,
     )
 

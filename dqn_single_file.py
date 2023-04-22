@@ -33,8 +33,6 @@ Experience = namedtuple(
     field_names=["state", "action", "reward", "next_state", "done"],
 )
 
-WEIGHTS_FILE_NAME = "weights/weights.pt"
-
 
 class MetricsEnum(str, Enum):
     DurationsMetric = "Duration"
@@ -614,7 +612,7 @@ def generate_env(env_name: str) -> gym.Env:
         raise ValueError("Unsupported environment: {env}".format(env=env_name))
 
 
-@hydra.main(version_base="1.2", config_path="configs", config_name="dqn")
+@hydra.main(version_base="1.2", config_path="configs", config_name="dqn_cartpolev1")
 def main(cfg: DictConfig):
     # Setup logging.
     logging.getLogger().setLevel(level=logging.getLevelName(str(cfg.env.logging_level)))
@@ -633,7 +631,7 @@ def main(cfg: DictConfig):
         state_size=state_size,
         action_size=action_size,
         capacity=cfg.agent.replay_mem_size,
-        weights_file=WEIGHTS_FILE_NAME,
+        weights_file=cfg.agent.weights_file,
         lr=cfg.agent.lr,
         gamma=cfg.agent.gamma,
         epsilon_start=cfg.agent.epsilon_start,

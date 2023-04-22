@@ -11,6 +11,7 @@ agent:
     epsilon_min: 0.05
     epsilon_decay: 1000
     replay_mem_size: 10_000
+    weights_file: "weights/dqn_cartpolev1.pt"
 
 env:
     env_name: "CartPole-v1"

@@ -19,8 +19,8 @@ MOCK_CONFIG = {
         "plot_training": False,
         "plot_validation": False,
         "logging_level": "INFO",
-        "num_update_target": 100,
-        "num_save_weights": 500,
+        "num_update_target": 1,
+        "num_save_weights": 1,
     },
     "agent": {
         "replay_mem_size": 1000,
@@ -31,6 +31,7 @@ MOCK_CONFIG = {
         "epsilon_decay": 0.995,
         "tau": 0.01,
         "max_grad_norm": 1.0,
+        "weights_file": "weights/testing_dqn_cartpolev1.pt",
     },
     "neural_net": {
         "hidden_nodes_1": 256,
