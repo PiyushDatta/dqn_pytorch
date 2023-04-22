@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
-import gym
+import gymnasium as gym
 from omegaconf import OmegaConf
 
 from dqn_modular_code.main import main as dqn_modular_code_main
